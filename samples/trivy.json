@@ -1,0 +1,174 @@
+{
+  "_fixture": "synthetic-lab",
+  "_comment": "Synthetic Trivy report for a local lab image named vuln-lab:local. Not a scan of a third-party system. CVE details are public NVD/CISA facts.",
+  "SchemaVersion": 2,
+  "ArtifactName": "vuln-lab:local",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "vuln-lab:local (jar)",
+      "Class": "lang-pkgs",
+      "Type": "jar",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2021-44228",
+          "PkgName": "org.apache.logging.log4j:log4j-core",
+          "InstalledVersion": "2.14.1",
+          "FixedVersion": "2.17.1",
+          "Severity": "CRITICAL",
+          "Title": "log4j-core: remote code execution via JNDI",
+          "Description": "Apache Log4j2 2.14.1 JNDI lookups can be abused for remote code execution. Upgrade to 2.17.1 or later.",
+          "PrimaryURL": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228",
+          "CweIDs": ["CWE-917"],
+          "PkgPath": "app/WEB-INF/lib/log4j-core-2.14.1.jar",
+          "CVSS": {
+            "nvd": {
+              "V3Score": 10.0,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+            }
+          },
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2021-44228"]
+        },
+        {
+          "VulnerabilityID": "CVE-2021-44228",
+          "PkgName": "org.apache.logging.log4j:log4j-core",
+          "InstalledVersion": "2.14.1",
+          "FixedVersion": "2.17.1",
+          "Severity": "CRITICAL",
+          "Title": "log4j-core: remote code execution via JNDI",
+          "Description": "Duplicate report of the same jar, included so deduplication is visible.",
+          "PrimaryURL": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228",
+          "CweIDs": ["CWE-917"],
+          "PkgPath": "app/WEB-INF/lib/log4j-core-2.14.1.jar",
+          "CVSS": {
+            "nvd": {
+              "V3Score": 10.0,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+            }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2022-22965",
+          "PkgName": "org.springframework:spring-beans",
+          "InstalledVersion": "5.3.17",
+          "FixedVersion": "5.3.18",
+          "Severity": "CRITICAL",
+          "Title": "spring-beans: data binding remote code execution on JDK 9+",
+          "Description": "Spring Framework 5.3.17 running on JDK 9+ may allow remote code execution through data binding. Upgrade to 5.3.18 or 5.2.20.",
+          "PrimaryURL": "https://nvd.nist.gov/vuln/detail/CVE-2022-22965",
+          "CweIDs": ["CWE-94"],
+          "PkgPath": "app/WEB-INF/lib/spring-beans-5.3.17.jar",
+          "CVSS": {
+            "nvd": {
+              "V3Score": 9.8,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+            }
+          },
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2022-22965"]
+        },
+        {
+          "VulnerabilityID": "CVE-2022-42889",
+          "PkgName": "org.apache.commons:commons-text",
+          "InstalledVersion": "1.9",
+          "FixedVersion": "1.10.0",
+          "Severity": "CRITICAL",
+          "Title": "commons-text: unsafe variable interpolation",
+          "Description": "Apache Commons Text 1.5 through 1.9 interpolates lookups that can reach outside the string. Upgrade to 1.10.0 or later.",
+          "PrimaryURL": "https://nvd.nist.gov/vuln/detail/CVE-2022-42889",
+          "CweIDs": ["CWE-94"],
+          "PkgPath": "app/WEB-INF/lib/commons-text-1.9.jar",
+          "CVSS": {
+            "nvd": {
+              "V3Score": 9.8,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+            }
+          },
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2022-42889"]
+        }
+      ]
+    },
+    {
+      "Target": "vuln-lab:local (debian)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2021-41773",
+          "PkgName": "apache2",
+          "InstalledVersion": "2.4.49",
+          "FixedVersion": "2.4.50",
+          "Severity": "HIGH",
+          "Title": "apache2: path traversal in 2.4.49",
+          "Description": "Apache HTTP Server 2.4.49 allows path traversal outside mapped directories. 2.4.50 is an incomplete fix; move to 2.4.51 or later (CVE-2021-42013).",
+          "PrimaryURL": "https://nvd.nist.gov/vuln/detail/CVE-2021-41773",
+          "CweIDs": ["CWE-22"],
+          "PkgPath": "usr/sbin/apache2",
+          "CVSS": {
+            "nvd": {
+              "V3Score": 7.5,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+            }
+          },
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2021-41773"]
+        },
+        {
+          "VulnerabilityID": "CVE-2021-42013",
+          "PkgName": "apache2",
+          "InstalledVersion": "2.4.49",
+          "FixedVersion": "2.4.51",
+          "Severity": "CRITICAL",
+          "Title": "apache2: incomplete fix for CVE-2021-41773",
+          "Description": "Apache HTTP Server 2.4.49 and 2.4.50 remain affected by path traversal. Upgrade to 2.4.51 or later.",
+          "PrimaryURL": "https://nvd.nist.gov/vuln/detail/CVE-2021-42013",
+          "CweIDs": ["CWE-22"],
+          "PkgPath": "usr/sbin/apache2",
+          "CVSS": {
+            "nvd": {
+              "V3Score": 9.8,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+            }
+          },
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2021-42013"]
+        },
+        {
+          "VulnerabilityID": "CVE-2023-38545",
+          "PkgName": "curl",
+          "InstalledVersion": "8.3.0",
+          "FixedVersion": "8.4.0",
+          "Severity": "HIGH",
+          "Title": "curl: heap buffer overflow in the SOCKS5 handshake",
+          "Description": "curl 7.69.0 through 8.3.0 can overflow a heap buffer during a SOCKS5 proxy handshake. Upgrade to 8.4.0 or later.",
+          "PrimaryURL": "https://nvd.nist.gov/vuln/detail/CVE-2023-38545",
+          "CweIDs": ["CWE-122"],
+          "PkgPath": "usr/bin/curl",
+          "CVSS": {
+            "nvd": {
+              "V3Score": 8.8,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H"
+            }
+          },
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2023-38545"]
+        },
+        {
+          "VulnerabilityID": "CVE-2024-0727",
+          "PkgName": "libssl3",
+          "InstalledVersion": "3.2.0",
+          "FixedVersion": "3.2.1",
+          "Severity": "MEDIUM",
+          "Title": "openssl: null dereference processing a PKCS#12 file",
+          "Description": "OpenSSL 3.2.0 can crash while processing a malicious PKCS#12 file. Upgrade to 3.2.1, 3.1.5, or 3.0.13.",
+          "PrimaryURL": "https://nvd.nist.gov/vuln/detail/CVE-2024-0727",
+          "CweIDs": ["CWE-476"],
+          "PkgPath": "usr/lib/x86_64-linux-gnu/libssl.so.3",
+          "CVSS": {
+            "nvd": {
+              "V3Score": 5.5,
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:H"
+            }
+          },
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2024-0727"]
+        }
+      ]
+    }
+  ]
+}
