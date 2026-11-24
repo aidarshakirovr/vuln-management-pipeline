@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install -e . --no-deps
+
+      - name: Ruff
+        run: python -m ruff check . && python -m ruff format --check .
+
+      - name: Pytest
+        run: python -m pytest
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # gitleaks-action lists commits on a pull request. contents: read is not enough
+    # for that API. Comments and artifact upload are disabled, so write is not required.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          GITLEAKS_ENABLE_SUMMARY: "false"
+
+      - name: Trivy filesystem scan
+        id: trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          format: table
+          output: trivy-fs.txt
+
+      - name: Require a Python manifest in the Trivy report
+        if: always()
+        run: |
+          if [ ! -s trivy-fs.txt ]; then
+            echo "Trivy did not write a report"
+            exit 1
+          fi
+          if grep -q "Supported files for scanner(s) not found" trivy-fs.txt; then
+            echo "Trivy found no scan targets"
+            cat trivy-fs.txt
+            exit 1
+          fi
+          if ! grep -q "requirements.txt" trivy-fs.txt; then
+            echo "Trivy report does not list requirements.txt"
+            cat trivy-fs.txt
+            exit 1
+          fi
+          if [ "${{ steps.trivy.outcome }}" != "success" ]; then
+            echo "Trivy reported vulnerabilities or failed"
+            exit 1
+          fi

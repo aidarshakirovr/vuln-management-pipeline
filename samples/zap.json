@@ -1,0 +1,56 @@
+{
+  "_fixture": "synthetic-lab",
+  "_comment": "Synthetic OWASP ZAP baseline report against http://127.0.0.1:3000. The host stands in for a local Juice Shop-style lab app. No third-party target.",
+  "@programName": "OWASP ZAP",
+  "site": [
+    {
+      "@name": "http://127.0.0.1:3000",
+      "@host": "127.0.0.1",
+      "@port": "3000",
+      "alerts": [
+        {
+          "pluginid": "40018",
+          "alertRef": "40018",
+          "alert": "SQL Injection",
+          "riskcode": "3",
+          "confidence": "2",
+          "riskdesc": "High (Medium)",
+          "desc": "The lab application reflected SQL syntax errors for a search parameter. Use parameterized queries.",
+          "solution": "Use parameterized queries and reject unexpected input on the server.",
+          "reference": "https://cwe.mitre.org/data/definitions/89.html",
+          "cweid": "89",
+          "wascid": "19",
+          "instances": [
+            {
+              "uri": "http://127.0.0.1:3000/rest/products/search",
+              "method": "GET",
+              "param": "q",
+              "evidence": "lab-fixture"
+            }
+          ]
+        },
+        {
+          "pluginid": "10038",
+          "alertRef": "10038",
+          "alert": "Content Security Policy (CSP) Header Not Set",
+          "riskcode": "1",
+          "confidence": "3",
+          "riskdesc": "Low (High)",
+          "desc": "The lab application did not send a Content-Security-Policy response header.",
+          "solution": "Send a Content-Security-Policy header that matches the application's own origins.",
+          "reference": "https://cwe.mitre.org/data/definitions/693.html",
+          "cweid": "693",
+          "wascid": "15",
+          "instances": [
+            {
+              "uri": "http://127.0.0.1:3000",
+              "method": "GET",
+              "param": "",
+              "evidence": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "source": "https://api.first.org/data/v1/epss",
+  "fetched_at": "2026-11-24T20:30:00Z",
+  "note": "Offline demo snapshot of FIRST EPSS for the CVEs in samples/. Date of scores: 2026-11-24. Not the full catalog.",
+  "scores": {
+    "CVE-2021-41773": {
+      "epss": 0.99992,
+      "percentile": 0.99985,
+      "date": "2026-11-24"
+    },
+    "CVE-2021-42013": {
+      "epss": 0.99964,
+      "percentile": 0.99975,
+      "date": "2026-11-24"
+    },
+    "CVE-2021-44228": {
+      "epss": 0.99999,
+      "percentile": 1.0,
+      "date": "2026-11-24"
+    },
+    "CVE-2022-22965": {
+      "epss": 0.99638,
+      "percentile": 0.99948,
+      "date": "2026-11-24"
+    },
+    "CVE-2022-42889": {
+      "epss": 0.99931,
+      "percentile": 0.99969,
+      "date": "2026-11-24"
+    },
+    "CVE-2023-38545": {
+      "epss": 0.78317,
+      "percentile": 0.99584,
+      "date": "2026-11-24"
+    },
+    "CVE-2024-0727": {
+      "epss": 0.03187,
+      "percentile": 0.88312,
+      "date": "2026-11-24"
+    }
+  }
+}
