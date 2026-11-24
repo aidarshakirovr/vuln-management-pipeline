@@ -49,6 +49,9 @@ services:
       NGINX_METRICS_ENABLED: ${NGINX_METRICS_ENABLED:-false}
       DD_UWSGI_HOST: ${DD_UWSGI_HOST:-uwsgi}
       DD_UWSGI_PORT: ${DD_UWSGI_PORT:-3031}
+      # The published 8443 port is silent unless the image is told to serve TLS.
+      USE_TLS: ${USE_TLS:-true}
+      GENERATE_TLS_CERTIFICATE: ${GENERATE_TLS_CERTIFICATE:-true}
     volumes:
       - defectdojo_media:/usr/share/nginx/html/media
     ports:

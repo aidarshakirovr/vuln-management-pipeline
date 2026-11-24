@@ -1,10 +1,19 @@
 import json
+import ssl
 from pathlib import Path
 from urllib.request import Request
 
 import pytest
 
-from vmp.defectdojo import DefectDojoError, encode_multipart, import_scan, resolve_scan_type
+from vmp.defectdojo import (
+    DefectDojoError,
+    encode_multipart,
+    import_scan,
+    nuclei_for_defectdojo,
+    resolve_scan_type,
+    ssl_context,
+    upload_bytes,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,11 +42,12 @@ def test_import_posts_original_file(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         def read(self):
             return json.dumps({"test": 7, "engagement_id": 3}).encode()
 
-    def fake_urlopen(request: Request, timeout: float = 0):
+    def fake_urlopen(request: Request, timeout: float = 0, context: object = None):
         captured["url"] = request.full_url
         captured["headers"] = dict(request.header_items())
         captured["data"] = request.data
         captured["timeout"] = timeout
+        captured["context"] = context
         return Response()
 
     monkeypatch.setenv("DD_URL", "http://localhost:8080")
@@ -68,6 +78,33 @@ def test_missing_token_is_an_error(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.delenv("DD_API_TOKEN", raising=False)
     with pytest.raises(DefectDojoError):
         import_scan(ROOT / "samples" / "zap.json")
+
+
+def test_tls_verify_off_uses_an_unverified_context(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("DD_TLS_VERIFY", "false")
+    context = ssl_context()
+    assert context is not None
+    assert context.verify_mode == ssl.CERT_NONE
+    monkeypatch.setenv("DD_TLS_VERIFY", "true")
+    assert ssl_context() is None
+
+
+def test_nuclei_upload_strips_the_comment_header():
+    body = nuclei_for_defectdojo((ROOT / "samples" / "nuclei.jsonl").read_bytes())
+    text = body.decode("utf-8")
+    assert text.startswith("{")
+    assert "\n#" not in text
+    assert text.count("\n{") == 1 or text.count("{") >= 2
+
+
+def test_zap_json_upload_is_xml_named_for_defectdojo():
+    filename, content = upload_bytes(ROOT / "samples" / "zap.json", "ZAP Scan")
+    assert filename.endswith(".xml")
+    text = content.decode("utf-8")
+    assert "<alertitem>" in text
+    assert "SQL Injection" in text
+    assert "<cweid>89</cweid>" in text
+    assert "http://127.0.0.1:3000/rest/products/search" in text
 
 
 def test_multipart_round_trip_names():

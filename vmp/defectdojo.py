@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 import urllib.error
 import urllib.request
 import uuid
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from vmp.parsers import detect_tool
@@ -38,9 +40,97 @@ def _required(name: str) -> str:
     return value
 
 
+def ssl_context() -> ssl.SSLContext | None:
+    """Skip certificate checks only when DD_TLS_VERIFY is explicitly false.
+
+    The compose file generates a self-signed nginx certificate. Leave verification
+    on for any other DefectDojo.
+    """
+    flag = os.environ.get("DD_TLS_VERIFY", "true").strip().lower()
+    if flag in {"0", "false", "no"}:
+        return ssl._create_unverified_context()
+    return None
+
+
 def _optional(name: str, default: str) -> str:
     value = os.environ.get(name, "").strip()
     return value or default
+
+
+def _xml_text(parent: ET.Element, tag: str, value: object) -> None:
+    node = ET.SubElement(parent, tag)
+    node.text = "" if value is None else str(value)
+
+
+def zap_json_to_xml(text: str) -> bytes:
+    """Turn classic ZAP JSON into the XML report DefectDojo 3.5 imports.
+
+    The ZAP parser in that release rejects any upload whose filename does not
+    end in ``.xml``.
+    """
+    data = json.loads(text)
+    sites = data.get("site") or []
+    if isinstance(sites, dict):
+        sites = [sites]
+    root = ET.Element("OWASPZAPReport")
+    for site in sites:
+        if not isinstance(site, dict):
+            continue
+        site_node = ET.SubElement(root, "site")
+        site_node.set("name", str(site.get("@name") or site.get("name") or ""))
+        alerts_node = ET.SubElement(site_node, "alerts")
+        for alert in site.get("alerts") or []:
+            if not isinstance(alert, dict):
+                continue
+            item = ET.SubElement(alerts_node, "alertitem")
+            _xml_text(item, "pluginid", alert.get("pluginid") or "")
+            _xml_text(item, "alert", alert.get("alert") or alert.get("name") or "")
+            risk = alert.get("riskcode")
+            _xml_text(item, "riskcode", "" if risk is None else risk)
+            _xml_text(item, "confidence", alert.get("confidence") or "")
+            _xml_text(item, "desc", alert.get("desc") or "")
+            _xml_text(item, "solution", alert.get("solution") or "")
+            _xml_text(item, "reference", alert.get("reference") or "")
+            _xml_text(item, "cweid", alert.get("cweid") or "")
+            instances = ET.SubElement(item, "instances")
+            raw_instances = alert.get("instances") or []
+            if not raw_instances:
+                raw_instances = [{"uri": site_node.get("name"), "method": "", "param": ""}]
+            for instance in raw_instances:
+                if not isinstance(instance, dict):
+                    continue
+                node = ET.SubElement(instances, "instance")
+                _xml_text(node, "uri", instance.get("uri") or site_node.get("name"))
+                _xml_text(node, "method", instance.get("method") or "")
+                _xml_text(node, "param", instance.get("param") or "")
+                _xml_text(node, "evidence", instance.get("evidence") or "")
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def nuclei_for_defectdojo(content: bytes) -> bytes:
+    """Drop comment lines. DefectDojo only treats the file as JSONL when it starts with ``{``."""
+    text = content.decode("utf-8-sig")
+    if text.lstrip().startswith("["):
+        return text.encode("utf-8")
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            lines.append(stripped)
+    return ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
+
+
+def upload_bytes(path: Path, scan_type: str) -> tuple[str, bytes]:
+    """Return the filename and body DefectDojo should receive."""
+    content = path.read_bytes()
+    if scan_type == "Nuclei Scan":
+        return path.name, nuclei_for_defectdojo(content)
+    if scan_type != "ZAP Scan" or path.name.lower().endswith(".xml"):
+        return path.name, content
+    text = content.decode("utf-8-sig")
+    if text.lstrip().startswith(("{", "[")):
+        return f"{path.stem}.xml", zap_json_to_xml(text)
+    return path.name, content
 
 
 def encode_multipart(
@@ -95,11 +185,12 @@ def import_scan(
     }
     if reimport:
         fields["close_old_findings"] = "true"
+    filename, content = upload_bytes(path, resolved)
     body, content_type = encode_multipart(
         fields,
         file_field="file",
-        filename=path.name,
-        content=path.read_bytes(),
+        filename=filename,
+        content=content,
     )
     request = urllib.request.Request(
         url,
@@ -112,7 +203,11 @@ def import_scan(
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        open_kwargs: dict[str, object] = {"timeout": timeout}
+        context = ssl_context()
+        if context is not None:
+            open_kwargs["context"] = context
+        with urllib.request.urlopen(request, **open_kwargs) as response:
             raw = response.read()
             status = response.status
     except urllib.error.HTTPError as exc:

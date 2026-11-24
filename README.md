@@ -177,8 +177,8 @@ rank  score   band      id              asset
 
 | Порт на хосте | Куда | Зачем |
 | --- | --- | --- |
-| `127.0.0.1:8080` (`DD_PORT`) | nginx:8080 | UI и API, `http://127.0.0.1:8080`, API `/api/v2/` |
-| `127.0.0.1:8443` (`DD_TLS_PORT`) | nginx:8443 | HTTPS |
+| `127.0.0.1:8080` (`DD_PORT`) | nginx:8080 | редирект на HTTPS |
+| `127.0.0.1:8443` (`DD_TLS_PORT`) | nginx:8443 | UI и API, `https://127.0.0.1:8443` |
 
 Порты слушаются только на loopback (`host_ip: 127.0.0.1`). `DD_ALLOWED_HOSTS` по умолчанию `localhost,127.0.0.1`. Postgres и Valkey наружу не проброшены. Postgres и Valkey имеют healthcheck; миграции стартуют после `service_healthy`, а не сразу после создания контейнера.
 
@@ -195,7 +195,7 @@ docker compose logs -f initializer   # дождаться exit 0
 
 Как получить API-ключ:
 
-1. Открыть `http://127.0.0.1:8080` и войти под `DD_ADMIN_USER` / `DD_ADMIN_PASSWORD` из `.env`.
+1. Открыть `https://127.0.0.1:8443` (сертификат самоподписанный; браузер предупредит) и войти под `DD_ADMIN_USER` / `DD_ADMIN_PASSWORD` из `.env`. `http://127.0.0.1:8080` только перенаправляет сюда.
 2. Меню пользователя в правом верхнем углу → **API Key**. Это статический ключ.
 3. Вписать его в `DD_API_TOKEN` в `.env` (не коммитить).
 
@@ -209,7 +209,7 @@ python -m vmp upload samples/trivy.json
 python -m vmp upload samples/zap.json --reimport
 ```
 
-Тип скана определяется по файлу: `Trivy Scan`, `ZAP Scan`, `Nuclei Scan`. Чужое имя парсера DefectDojo можно передать как `--scan-type`. Продукт, тип продукта и engagement берутся из `DD_PRODUCT_NAME`, `DD_PRODUCT_TYPE_NAME`, `DD_ENGAGEMENT_NAME`; при отсутствии контекст создаётся (`auto_create_context=true`). `--reimport` закрывает находки, которых нет в новом файле.
+Тип скана определяется по файлу: `Trivy Scan`, `ZAP Scan`, `Nuclei Scan`. DefectDojo 3.5 принимает ZAP только как XML, поэтому JSON из `samples/zap.json` перед отправкой переводится в XML и уходит с именем `*.xml`. В Nuclei JSONL перед отправкой выкидываются строки-комментарии: парсер DefectDojo считает файл JSONL, только если он начинается с `{`. Чужое имя парсера можно передать как `--scan-type`. Nginx по умолчанию включает TLS (`USE_TLS` и `GENERATE_TLS_CERTIFICATE`), иначе опубликованный 8443 молчит. Для самоподписанного сертификата в `.env.example` стоит `DD_URL=https://127.0.0.1:8443` и `DD_TLS_VERIFY=false`. Значение `DD_PRODUCT_TYPE_NAME` взято в кавычки, иначе `source .env` ломается на пробелах. Продукт, тип продукта и engagement берутся из `DD_PRODUCT_NAME`, `DD_PRODUCT_TYPE_NAME`, `DD_ENGAGEMENT_NAME`; при отсутствии контекст создаётся (`auto_create_context=true`). `--reimport` закрывает находки, которых нет в новом файле.
 
 Стенд только для своей машины. Не выставляйте эти порты в интернет и не оставляйте `change-me`.
 
