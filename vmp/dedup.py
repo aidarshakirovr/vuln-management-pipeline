@@ -58,11 +58,12 @@ def location_parts(location: str, parameter: str | None = None) -> tuple[str, st
 
 
 def fingerprint(finding: Finding) -> str:
-    """Stable key: CVE or CWE or title, plus component/url, plus location.
+    """Stable key: CVE, else raw id, else CWE, else title, plus place.
 
-    The scanner name is intentionally not part of the key.
+    A GHSA, OSV, or ALAS id in ``raw_id`` is part of the key. Two advisories
+    that share a CWE and a package stay distinct. The scanner name is not.
     """
-    identity = finding.cve or finding.cwe or title_key(finding.title)
+    identity = finding.cve or finding.raw_id or finding.cwe or title_key(finding.title)
     origin, place = location_parts(finding.location, finding.parameter)
     if finding.component:
         asset = finding.component.lower()
@@ -80,6 +81,17 @@ def _richness(finding: Finding) -> tuple[int, int, int, int]:
         len(finding.description or ""),
         len(finding.references),
     )
+
+
+def _other_vectors(group: list[Finding]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in group:
+        for vector in item.other_cvss_vectors:
+            if vector and vector not in seen:
+                seen.add(vector)
+                ordered.append(vector)
+    return ordered
 
 
 def _fill(target: Finding, others: list[Finding], attr: str) -> None:
@@ -124,6 +136,7 @@ def deduplicate(findings: list[Finding]) -> list[Finding]:
             remediation=base.remediation,
             cvss_vector=base.cvss_vector,
             cvss_score=base.cvss_score,
+            other_cvss_vectors=_other_vectors(group),
             parameter=base.parameter,
             references=references,
             raw_id=base.raw_id,

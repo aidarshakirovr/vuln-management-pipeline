@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
+
+# Advisory ids that must not collapse into a shared CWE.
+_ADVISORY_ID = re.compile(
+    r"^(?:CVE|GHSA|ALAS\w*|OSV|RHSA|GLSA|PYSEC|RUSTSEC)-",
+    re.IGNORECASE,
+)
 
 SEVERITY_ORDER = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 
@@ -61,6 +68,18 @@ def normalize_cve(value: str | None) -> str | None:
     return text
 
 
+def stable_raw_id(value: str | None) -> str | None:
+    """Keep a non-CVE advisory id stable. GHSA/OSV/ALAS are uppercased."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if _ADVISORY_ID.match(text):
+        return text.upper()
+    return text
+
+
 def normalize_cwe(value: str | None) -> str | None:
     if value is None:
         return None
@@ -93,6 +112,7 @@ class Finding:
     remediation: str = ""
     cvss_vector: str | None = None
     cvss_score: float | None = None
+    other_cvss_vectors: list[str] = field(default_factory=list)
     parameter: str | None = None
     references: list[str] = field(default_factory=list)
     raw_id: str | None = None
@@ -112,6 +132,9 @@ class Finding:
         self.severity = normalize_severity(self.severity)
         self.cve = normalize_cve(self.cve)
         self.cwe = normalize_cwe(self.cwe)
+        self.raw_id = stable_raw_id(self.raw_id)
+        if self.cve is None and self.raw_id and self.raw_id.startswith("CVE-"):
+            self.cve = self.raw_id
         self.title = (self.title or self.cve or self.cwe or "untitled").strip()
         self.location = (self.location or "").strip()
         self.tool = (self.tool or "unknown").strip().lower()

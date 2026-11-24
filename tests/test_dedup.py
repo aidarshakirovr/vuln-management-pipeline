@@ -67,6 +67,49 @@ def test_web_fingerprint_drops_query_values_and_sorts_names():
     assert location_parts("http://127.0.0.1:3000/a?b=2&a=1")[1] == "/a?a&b"
 
 
+def test_two_ghsa_findings_with_one_cwe_stay_distinct():
+    shared = {
+        "title": "XSS",
+        "severity": "medium",
+        "tool": "trivy",
+        "location": "app/pkg.jar",
+        "cwe": "CWE-79",
+        "component": "example",
+        "version": "1.0.0",
+    }
+    left = Finding(**shared, raw_id="ghsa-1111-2222-3333")
+    right = Finding(**shared, raw_id="GHSA-aaaa-bbbb-cccc")
+    assert fingerprint(left).startswith("GHSA-1111-2222-3333|")
+    assert "CWE-79" not in fingerprint(left)
+    assert len(deduplicate([left, right])) == 2
+
+
+def test_same_ghsa_merges_regardless_of_case():
+    left = Finding(
+        title="XSS",
+        severity="medium",
+        tool="trivy",
+        location="app/pkg.jar",
+        cwe="79",
+        component="example",
+        version="1.0.0",
+        raw_id="ghsa-1111-2222-3333",
+    )
+    right = Finding(
+        title="XSS",
+        severity="low",
+        tool="osv",
+        location="app/pkg.jar",
+        cwe="CWE-79",
+        component="example",
+        version="1.0.0",
+        raw_id="GHSA-1111-2222-3333",
+    )
+    merged = deduplicate([left, right])
+    assert len(merged) == 1
+    assert merged[0].duplicate_count == 2
+
+
 def test_title_fallback_when_no_cve_or_cwe():
     left = Finding(title="Missing header!", severity="low", tool="zap", location="/health")
     right = Finding(title="missing header", severity="info", tool="nuclei", location="/health")

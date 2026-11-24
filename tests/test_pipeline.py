@@ -17,18 +17,18 @@ def test_demo_samples_dedup_score_and_export(tmp_path: Path):
         out_dir=tmp_path,
     )
     assert result.raw_count == 12
-    assert len(result.findings) == 10
+    assert len(result.findings) == 11
     log4j = next(finding for finding in result.findings if finding.cve == "CVE-2021-44228")
     assert log4j.duplicate_count == 2
     assert log4j.risk_band == "critical"
     assert log4j.risk_score >= 99
-    sqli = next(finding for finding in result.findings if finding.cwe == "CWE-89")
-    assert sqli.sources == ["nuclei", "zap"]
-    assert sqli.duplicate_count == 2
-    assert sqli.epss_status == "not_applicable"
+    sqli = [finding for finding in result.findings if finding.cwe == "CWE-89"]
+    assert {tuple(finding.sources) for finding in sqli} == {("nuclei",), ("zap",)}
+    assert all(finding.duplicate_count == 1 for finding in sqli)
+    assert all(finding.epss_status == "not_applicable" for finding in sqli)
     openssl = next(finding for finding in result.findings if finding.cve == "CVE-2024-0727")
     assert openssl.kev is False
-    assert openssl.risk_score < sqli.risk_score
+    assert openssl.risk_score < min(finding.risk_score or 0 for finding in sqli)
     assert result.findings[0].cve == "CVE-2021-44228"
     assert result.findings == sorted(
         result.findings, key=lambda finding: finding.risk_score or 0, reverse=True

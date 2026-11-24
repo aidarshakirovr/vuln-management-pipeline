@@ -189,6 +189,9 @@ def render_markdown(findings: list[Finding]) -> str:
         )
         if finding.cvss_vector:
             lines.append(f"- CVSS vector: `{finding.cvss_vector}`")
+        if finding.other_cvss_vectors:
+            kept = ", ".join(f"`{item}`" for item in finding.other_cvss_vectors)
+            lines.append(f"- Other CVSS vectors kept: {kept}")
         lines.append(
             f"- EPSS: {_fmt_epss(finding.epss) or 'n/a'} "
             f"(percentile {_fmt_epss(finding.epss_percentile) or 'n/a'}, {finding.epss_status})"

@@ -10,10 +10,10 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{name = "aidarshakirovr"}]
-dependencies = ["cvss>=3.1,<4"]
+dependencies = ["cvss==3.6"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.8"]
+dev = ["pytest==9.2.0", "ruff==0.17.6"]
 
 [project.scripts]
 vmp = "vmp.cli:main"

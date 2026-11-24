@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 
 import pytest
 
+from vmp.dedup import deduplicate
 from vmp.parsers import ParseError, parse_scan
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,3 +94,63 @@ def test_cwe_placeholder_is_dropped(tmp_path: Path):
     findings, _ = parse_scan(path)
     assert findings[0].cwe is None
     assert findings[0].severity == "info"
+
+
+def test_trivy_keeps_distinct_ghsa_ids_and_non_v3_vectors(tmp_path: Path):
+    path = tmp_path / "trivy.json"
+    path.write_text(
+        json.dumps(
+            {
+                "ArtifactName": "vuln-lab:local",
+                "Results": [
+                    {
+                        "Target": "app",
+                        "Vulnerabilities": [
+                            {
+                                "VulnerabilityID": "GHSA-1111-2222-3333",
+                                "PkgName": "demo",
+                                "InstalledVersion": "1.0.0",
+                                "Severity": "HIGH",
+                                "CweIDs": ["CWE-79"],
+                                "PkgPath": "app/demo.jar",
+                                "CVSS": {
+                                    "nvd": {
+                                        "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+                                        "V3Score": 7.5,
+                                        "V2Vector": "AV:N/AC:L/Au:N/C:P/I:N/A:N",
+                                        "V2Score": 5.0,
+                                    }
+                                },
+                            },
+                            {
+                                "VulnerabilityID": "GHSA-aaaa-bbbb-cccc",
+                                "PkgName": "demo",
+                                "InstalledVersion": "1.0.0",
+                                "Severity": "MEDIUM",
+                                "CweIDs": ["CWE-79"],
+                                "PkgPath": "app/demo.jar",
+                                "CVSS": {
+                                    "nvd": {
+                                        "V2Vector": "AV:N/AC:L/Au:N/C:N/I:N/A:P",
+                                        "V2Score": 5.0,
+                                    }
+                                },
+                            },
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    findings, warnings = parse_scan(path)
+    assert warnings == []
+    assert len(deduplicate(findings)) == 2
+    first, second = findings
+    assert first.cve is None
+    assert first.raw_id == "GHSA-1111-2222-3333"
+    assert first.cvss_vector.startswith("CVSS:3.1/")
+    assert first.other_cvss_vectors == ["AV:N/AC:L/Au:N/C:P/I:N/A:N"]
+    assert second.raw_id == "GHSA-AAAA-BBBB-CCCC"
+    assert second.cvss_vector == "AV:N/AC:L/Au:N/C:N/I:N/A:P"
+    assert second.cwe == "CWE-79"

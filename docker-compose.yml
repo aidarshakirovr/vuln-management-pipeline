@@ -3,16 +3,45 @@
 #
 # Differences from upstream:
 # - published images only (no local Dockerfile build)
-# - Django and nginx images pinned to 3.5.300
-# - no default passwords or Django secret keys; copy .env.example to .env
+# - Django and nginx pinned to 3.5.300 by digest
+# - no default passwords; a preflight container exits if a secret is still "change-me"
+# - HTTP and HTTPS are published on 127.0.0.1 only
+# - Postgres must be healthy before migrations start
 # - Postgres and Valkey are not published on the host
 #
-# UI and API: http://localhost:8080  (override with DD_PORT)
-# HTTPS:      https://localhost:8443 (override with DD_TLS_PORT)
+# UI and API: http://127.0.0.1:8080  (override the port with DD_PORT)
+# HTTPS:      https://127.0.0.1:8443 (override the port with DD_TLS_PORT)
 
 services:
+  preflight:
+    image: "docker.io/library/busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec"
+    environment:
+      DD_DATABASE_PASSWORD: "${DD_DATABASE_PASSWORD:?Set DD_DATABASE_PASSWORD in .env}"
+      DD_SECRET_KEY: "${DD_SECRET_KEY:?Set DD_SECRET_KEY in .env}"
+      DD_CREDENTIAL_AES_256_KEY: "${DD_CREDENTIAL_AES_256_KEY:?Set DD_CREDENTIAL_AES_256_KEY in .env}"
+      DD_ADMIN_PASSWORD: "${DD_ADMIN_PASSWORD:?Set DD_ADMIN_PASSWORD in .env}"
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        fail=0
+        check() {
+          name="$$1"
+          value="$$2"
+          case "$$value" in
+            *change-me*)
+              echo "Refusing to start: $$name still contains change-me"
+              return 1
+              ;;
+          esac
+        }
+        check DD_DATABASE_PASSWORD "$$DD_DATABASE_PASSWORD" || fail=1
+        check DD_SECRET_KEY "$$DD_SECRET_KEY" || fail=1
+        check DD_CREDENTIAL_AES_256_KEY "$$DD_CREDENTIAL_AES_256_KEY" || fail=1
+        check DD_ADMIN_PASSWORD "$$DD_ADMIN_PASSWORD" || fail=1
+        exit $$fail
+
   nginx:
-    image: "${DD_IMAGE_REGISTRY:-docker.io}/defectdojo/defectdojo-nginx:${DD_VERSION:-3.5.300}"
+    image: "${DD_IMAGE_REGISTRY:-docker.io}/defectdojo/defectdojo-nginx:3.5.300@sha256:7dfd466466de9f927050416acdf54498e8afc7015c5de2a9e064eaec6991e86a"
     depends_on:
       uwsgi:
         condition: service_started
@@ -25,20 +54,24 @@ services:
     ports:
       - target: 8080
         published: ${DD_PORT:-8080}
+        host_ip: 127.0.0.1
         protocol: tcp
       - target: 8443
         published: ${DD_TLS_PORT:-8443}
+        host_ip: 127.0.0.1
         protocol: tcp
 
   uwsgi:
-    image: "${DD_IMAGE_REGISTRY:-docker.io}/defectdojo/defectdojo-django:${DD_VERSION:-3.5.300}"
+    image: "${DD_IMAGE_REGISTRY:-docker.io}/defectdojo/defectdojo-django:3.5.300@sha256:42b6b4aab33fd8cefd6ae953413cd3463d78eff1ae995559fa07c475f88eed9a"
     depends_on:
+      preflight:
+        condition: service_completed_successfully
       initializer:
         condition: service_completed_successfully
       postgres:
-        condition: service_started
+        condition: service_healthy
       valkey:
-        condition: service_started
+        condition: service_healthy
     entrypoint:
       - /wait-for-it.sh
       - "${DD_DATABASE_HOST:-postgres}:${DD_DATABASE_PORT:-5432}"
@@ -49,7 +82,7 @@ services:
     environment:
       DD_DEBUG: "False"
       DD_DJANGO_METRICS_ENABLED: ${DD_DJANGO_METRICS_ENABLED:-False}
-      DD_ALLOWED_HOSTS: ${DD_ALLOWED_HOSTS:-*}
+      DD_ALLOWED_HOSTS: ${DD_ALLOWED_HOSTS:-localhost,127.0.0.1}
       DD_DATABASE_URL: "postgresql://${DD_DATABASE_USER:?Set DD_DATABASE_USER in .env}:${DD_DATABASE_PASSWORD:?Set DD_DATABASE_PASSWORD in .env}@${DD_DATABASE_HOST:-postgres}:${DD_DATABASE_PORT:-5432}/${DD_DATABASE_NAME:?Set DD_DATABASE_NAME in .env}"
       DD_CELERY_BROKER_URL: ${DD_CELERY_BROKER_URL:-redis://valkey:6379/0}
       DD_CACHE_URL: ${DD_CACHE_URL:-redis://valkey:6379/1}
@@ -64,14 +97,16 @@ services:
       - defectdojo_media:/app/media
 
   celerybeat:
-    image: "${DD_IMAGE_REGISTRY:-docker.io}/defectdojo/defectdojo-django:${DD_VERSION:-3.5.300}"
+    image: "${DD_IMAGE_REGISTRY:-docker.io}/defectdojo/defectdojo-django:3.5.300@sha256:42b6b4aab33fd8cefd6ae953413cd3463d78eff1ae995559fa07c475f88eed9a"
     depends_on:
+      preflight:
+        condition: service_completed_successfully
       initializer:
         condition: service_completed_successfully
       postgres:
-        condition: service_started
+        condition: service_healthy
       valkey:
-        condition: service_started
+        condition: service_healthy
     entrypoint:
       - /wait-for-it.sh
       - "${DD_DATABASE_HOST:-postgres}:${DD_DATABASE_PORT:-5432}"
@@ -81,7 +116,7 @@ services:
       - /entrypoint-celery-beat.sh
     environment:
       DD_DEBUG: "False"
-      DD_ALLOWED_HOSTS: ${DD_ALLOWED_HOSTS:-*}
+      DD_ALLOWED_HOSTS: ${DD_ALLOWED_HOSTS:-localhost,127.0.0.1}
       DD_DATABASE_URL: "postgresql://${DD_DATABASE_USER:?Set DD_DATABASE_USER in .env}:${DD_DATABASE_PASSWORD:?Set DD_DATABASE_PASSWORD in .env}@${DD_DATABASE_HOST:-postgres}:${DD_DATABASE_PORT:-5432}/${DD_DATABASE_NAME:?Set DD_DATABASE_NAME in .env}"
       DD_CELERY_BROKER_URL: ${DD_CELERY_BROKER_URL:-redis://valkey:6379/0}
       DD_CACHE_URL: ${DD_CACHE_URL:-redis://valkey:6379/1}
@@ -95,14 +130,16 @@ services:
         read_only: true
 
   celeryworker:
-    image: "${DD_IMAGE_REGISTRY:-docker.io}/defectdojo/defectdojo-django:${DD_VERSION:-3.5.300}"
+    image: "${DD_IMAGE_REGISTRY:-docker.io}/defectdojo/defectdojo-django:3.5.300@sha256:42b6b4aab33fd8cefd6ae953413cd3463d78eff1ae995559fa07c475f88eed9a"
     depends_on:
+      preflight:
+        condition: service_completed_successfully
       initializer:
         condition: service_completed_successfully
       postgres:
-        condition: service_started
+        condition: service_healthy
       valkey:
-        condition: service_started
+        condition: service_healthy
     entrypoint:
       - /wait-for-it.sh
       - "${DD_DATABASE_HOST:-postgres}:${DD_DATABASE_PORT:-5432}"
@@ -112,7 +149,7 @@ services:
       - /entrypoint-celery-worker.sh
     environment:
       DD_DEBUG: "False"
-      DD_ALLOWED_HOSTS: ${DD_ALLOWED_HOSTS:-*}
+      DD_ALLOWED_HOSTS: ${DD_ALLOWED_HOSTS:-localhost,127.0.0.1}
       DD_DATABASE_URL: "postgresql://${DD_DATABASE_USER:?Set DD_DATABASE_USER in .env}:${DD_DATABASE_PASSWORD:?Set DD_DATABASE_PASSWORD in .env}@${DD_DATABASE_HOST:-postgres}:${DD_DATABASE_PORT:-5432}/${DD_DATABASE_NAME:?Set DD_DATABASE_NAME in .env}"
       DD_CELERY_BROKER_URL: ${DD_CELERY_BROKER_URL:-redis://valkey:6379/0}
       DD_CACHE_URL: ${DD_CACHE_URL:-redis://valkey:6379/1}
@@ -127,10 +164,12 @@ services:
       - defectdojo_media:/app/media
 
   initializer:
-    image: "${DD_IMAGE_REGISTRY:-docker.io}/defectdojo/defectdojo-django:${DD_VERSION:-3.5.300}"
+    image: "${DD_IMAGE_REGISTRY:-docker.io}/defectdojo/defectdojo-django:3.5.300@sha256:42b6b4aab33fd8cefd6ae953413cd3463d78eff1ae995559fa07c475f88eed9a"
     depends_on:
+      preflight:
+        condition: service_completed_successfully
       postgres:
-        condition: service_started
+        condition: service_healthy
     entrypoint:
       - /wait-for-it.sh
       - "${DD_DATABASE_HOST:-postgres}:${DD_DATABASE_PORT:-5432}"
@@ -138,7 +177,7 @@ services:
       - /entrypoint-initializer.sh
     environment:
       DD_DEBUG: "False"
-      DD_ALLOWED_HOSTS: ${DD_ALLOWED_HOSTS:-*}
+      DD_ALLOWED_HOSTS: ${DD_ALLOWED_HOSTS:-localhost,127.0.0.1}
       DD_DATABASE_URL: "postgresql://${DD_DATABASE_USER:?Set DD_DATABASE_USER in .env}:${DD_DATABASE_PASSWORD:?Set DD_DATABASE_PASSWORD in .env}@${DD_DATABASE_HOST:-postgres}:${DD_DATABASE_PORT:-5432}/${DD_DATABASE_NAME:?Set DD_DATABASE_NAME in .env}"
       DD_CELERY_BROKER_URL: ${DD_CELERY_BROKER_URL:-redis://valkey:6379/0}
       DD_CACHE_URL: ${DD_CACHE_URL:-redis://valkey:6379/1}
@@ -159,6 +198,15 @@ services:
 
   postgres:
     image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     environment:
       PGDATA: /var/lib/postgresql/data
       POSTGRES_DB: "${DD_DATABASE_NAME:?Set DD_DATABASE_NAME in .env}"
@@ -169,6 +217,14 @@ services:
 
   valkey:
     image: valkey/valkey:9.1.2-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     volumes:
       - defectdojo_valkey:/data
 

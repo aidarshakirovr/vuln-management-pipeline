@@ -13,7 +13,8 @@ help:
 		'make defectdojo  start local DefectDojo (requires a filled-in .env)'
 
 install:
-	$(PYTHON) -m pip install -e '.[dev]'
+	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m pip install -e . --no-deps
 
 lint:
 	$(PYTHON) -m ruff check .

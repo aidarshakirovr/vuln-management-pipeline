@@ -45,29 +45,48 @@ def _cve_from_id(value: str | None) -> str | None:
     return None
 
 
-def _trivy_cvss(vuln: dict[str, Any]) -> tuple[str | None, float | None]:
+def _as_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _trivy_cvss(vuln: dict[str, Any]) -> tuple[str | None, float | None, list[str]]:
+    """Prefer a v3 vector. Keep v2 and v4 instead of dropping them.
+
+    Returns the vector used for scoring, the scanner score for that version,
+    and any other version strings reported alongside it.
+    """
     block = vuln.get("CVSS") or {}
     if not isinstance(block, dict):
-        return None, None
+        return None, None, []
     preferred = ("nvd", "ghsa", "redhat", "bitnami")
     vendors = [name for name in preferred if name in block]
     vendors.extend(name for name in block if name not in vendors)
-    vector = None
-    score = None
+    found: dict[str, tuple[str, float | None]] = {}
     for name in vendors:
         entry = block.get(name) or {}
         if not isinstance(entry, dict):
             continue
-        if vector is None and entry.get("V3Vector"):
-            vector = str(entry["V3Vector"])
-        if score is None and entry.get("V3Score") is not None:
-            try:
-                score = float(entry["V3Score"])
-            except (TypeError, ValueError):
-                score = None
-        if vector is not None:
-            break
-    return vector, score
+        if "v3" not in found and entry.get("V3Vector"):
+            found["v3"] = (str(entry["V3Vector"]), _as_float(entry.get("V3Score")))
+        v4 = entry.get("V40Vector") or entry.get("V4Vector")
+        if "v4" not in found and v4:
+            found["v4"] = (str(v4), _as_float(entry.get("V40Score") or entry.get("V4Score")))
+        if "v2" not in found and entry.get("V2Vector"):
+            found["v2"] = (str(entry["V2Vector"]), _as_float(entry.get("V2Score")))
+    for kind in ("v3", "v4", "v2"):
+        if kind not in found:
+            continue
+        vector, score = found[kind]
+        others = [
+            found[other][0] for other in ("v3", "v4", "v2") if other != kind and other in found
+        ]
+        return vector, score, others
+    return None, None, []
 
 
 def _remediation_for_package(component: str | None, version: str | None, fixed: str | None) -> str:
@@ -100,7 +119,7 @@ def parse_trivy(data: dict[str, Any], *, source: str) -> list[Finding]:
             component = _first_str(vuln.get("PkgName"))
             version = _first_str(vuln.get("InstalledVersion"))
             fixed = _first_str(vuln.get("FixedVersion"))
-            vector, score = _trivy_cvss(vuln)
+            vector, score, other_vectors = _trivy_cvss(vuln)
             location = _first_str(vuln.get("PkgPath")) or target
             references = [str(item) for item in _as_list(vuln.get("References")) if item]
             primary = _first_str(vuln.get("PrimaryURL"))
@@ -123,6 +142,7 @@ def parse_trivy(data: dict[str, Any], *, source: str) -> list[Finding]:
                     remediation=_remediation_for_package(component, version, fixed),
                     cvss_vector=vector,
                     cvss_score=score,
+                    other_cvss_vectors=other_vectors,
                     references=references,
                     raw_id=vuln_id or None,
                     sources=["trivy"],

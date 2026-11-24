@@ -5,7 +5,7 @@ The weights live here and are repeated in the README. Tests lock both.
 
 from __future__ import annotations
 
-from cvss import CVSS3
+from cvss import CVSS2, CVSS3, CVSS4
 from cvss.exceptions import CVSSError
 
 from vmp.models import SEVERITY_TO_CVSS, Exposure, Finding
@@ -38,30 +38,70 @@ def band_for(score: float) -> str:
     return "info"
 
 
-def cvss_base_score(vector: str | None) -> float | None:
-    """Return the CVSS v3.0/v3.1 base score for a vector, or None if it is unusable."""
-    if not vector:
-        return None
+def _vector_kind(vector: str) -> str:
+    """Return v2, v3, v4, or unknown. A bare ``AV:`` metric block is v3 unless it uses v2's Au."""
     text = vector.strip()
-    if not text:
-        return None
-    if text.upper().startswith("AV:"):
-        text = f"CVSS:3.1/{text}"
-    try:
-        parsed = CVSS3(text)
-        score = float(parsed.scores()[0])
-    except CVSSError:
-        return None
+    upper = text.upper()
+    if upper.startswith("CVSS:4"):
+        return "v4"
+    if upper.startswith("CVSS:2"):
+        return "v2"
+    if upper.startswith("CVSS:3"):
+        return "v3"
+    if upper.startswith("AV:") and "/AU:" in upper:
+        return "v2"
+    if upper.startswith("AV:"):
+        return "v3"
+    return "unknown"
+
+
+def _score_in_range(score: float) -> float | None:
     if score < 0 or score > 10:
         return None
     return score
 
 
+def cvss_base_score(vector: str | None) -> float | None:
+    """Recompute a base score. v3 is preferred; v2 and v4 are scored, not discarded."""
+    scored, _source = score_vector(vector)
+    return scored
+
+
+def score_vector(vector: str | None) -> tuple[float | None, str | None]:
+    """Return ``(base, source)``. ``source`` is vector, vector_v2, or vector_v4.
+
+    v3 wins when the stored vector is v3. v2 and v4 are converted when they
+    are the vector we kept. A vector that fails to parse is left on the finding.
+    """
+    if not vector:
+        return None, None
+    text = vector.strip()
+    if not text:
+        return None, None
+    kind = _vector_kind(text)
+    try:
+        if kind == "v2":
+            metric = text.split("/", 1)[1] if text.upper().startswith("CVSS:2.0/") else text
+            parsed = CVSS2(metric)
+            return _score_in_range(float(parsed.scores()[0])), "vector_v2"
+        if kind == "v4":
+            metric = text if text.upper().startswith("CVSS:") else f"CVSS:4.0/{text}"
+            parsed = CVSS4(metric)
+            return _score_in_range(float(parsed.scores()[0])), "vector_v4"
+        if kind == "v3":
+            metric = text if text.upper().startswith("CVSS:") else f"CVSS:3.1/{text}"
+            parsed = CVSS3(metric)
+            return _score_in_range(float(parsed.scores()[0])), "vector"
+    except CVSSError:
+        return None, None
+    return None, None
+
+
 def resolve_cvss(finding: Finding) -> tuple[float, str]:
-    """Prefer a recomputed vector, then the scanner score, then a severity map."""
-    from_vector = cvss_base_score(finding.cvss_vector)
-    if from_vector is not None:
-        return from_vector, "vector"
+    """Prefer a recomputed vector (v3, else v2 or v4), then the scanner score, then severity."""
+    from_vector, source = score_vector(finding.cvss_vector)
+    if from_vector is not None and source is not None:
+        return from_vector, source
     if finding.cvss_score is not None:
         score = float(finding.cvss_score)
         if 0 <= score <= 10:
@@ -107,6 +147,8 @@ def score_finding(finding: Finding, exposure: Exposure) -> Finding:
     finding.score_breakdown = {
         "cvss_base": base,
         "cvss_source": source,
+        "cvss_vector": finding.cvss_vector,
+        "other_cvss_vectors": list(finding.other_cvss_vectors),
         "scanner_score": scanner_score,
         "cvss_norm": cvss_norm,
         "cvss_weight": CVSS_WEIGHT,

@@ -37,6 +37,37 @@ def test_bare_vector_gets_a_prefix():
     assert cvss_base_score("AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N") == 7.5
 
 
+def test_v2_and_v4_vectors_are_scored_and_kept():
+    v2 = Finding(
+        title="legacy",
+        severity="low",
+        tool="trivy",
+        location="app/x",
+        raw_id="GHSA-1111-2222-3333",
+        cvss_vector="AV:N/AC:L/Au:N/C:P/I:N/A:N",
+        cvss_score=9.9,
+        epss_status="unknown",
+    )
+    score_finding(v2, Exposure.UNKNOWN)
+    assert v2.cvss_score == 5.0
+    assert v2.score_breakdown["cvss_source"] == "vector_v2"
+    assert v2.cvss_vector == "AV:N/AC:L/Au:N/C:P/I:N/A:N"
+
+    v4 = Finding(
+        title="newer",
+        severity="low",
+        tool="trivy",
+        location="app/y",
+        raw_id="GHSA-aaaa-bbbb-cccc",
+        cvss_vector="CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+        cvss_score=1.0,
+        epss_status="unknown",
+    )
+    score_finding(v4, Exposure.UNKNOWN)
+    assert v4.cvss_score == 9.3
+    assert v4.score_breakdown["cvss_source"] == "vector_v4"
+
+
 def test_invalid_vector_falls_back_to_scanner_score():
     finding = Finding(
         title="broken",

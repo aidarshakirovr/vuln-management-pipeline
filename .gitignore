@@ -12,3 +12,4 @@ out/
 .vmp-cache/
 .coverage
 htmlcov/
+trivy-fs.txt
