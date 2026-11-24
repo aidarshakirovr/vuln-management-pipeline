@@ -89,6 +89,20 @@ def test_tls_verify_off_uses_an_unverified_context(monkeypatch: pytest.MonkeyPat
     assert ssl_context() is None
 
 
+def test_trivy_upload_keeps_one_log4j_row():
+    _filename, content = upload_bytes(ROOT / "samples" / "trivy.json", "Trivy Scan")
+    data = json.loads(content)
+    log4j = []
+    total = 0
+    for result in data["Results"]:
+        for vuln in result.get("Vulnerabilities") or []:
+            total += 1
+            if vuln.get("VulnerabilityID") == "CVE-2021-44228":
+                log4j.append(vuln.get("PkgPath"))
+    assert log4j == ["app/WEB-INF/lib/log4j-core-2.14.1.jar"]
+    assert total == 7
+
+
 def test_nuclei_upload_strips_the_comment_header():
     body = nuclei_for_defectdojo((ROOT / "samples" / "nuclei.jsonl").read_bytes())
     text = body.decode("utf-8")

@@ -11,7 +11,8 @@ import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from vmp.parsers import detect_tool
+from vmp.dedup import fingerprint
+from vmp.parsers import detect_tool, parse_nuclei, parse_trivy, parse_zap
 
 SCAN_TYPES = {
     "trivy": "Trivy Scan",
@@ -68,7 +69,7 @@ def zap_json_to_xml(text: str) -> bytes:
     The ZAP parser in that release rejects any upload whose filename does not
     end in ``.xml``.
     """
-    data = json.loads(text)
+    data = dedupe_zap_document(json.loads(text))
     sites = data.get("site") or []
     if isinstance(sites, dict):
         sites = [sites]
@@ -107,6 +108,98 @@ def zap_json_to_xml(text: str) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def _keep_first(findings_for_item, seen: set[str]) -> bool:
+    if not findings_for_item:
+        return True
+    key = fingerprint(findings_for_item[0])
+    if key in seen:
+        return False
+    seen.add(key)
+    return True
+
+
+def dedupe_trivy_document(data: dict) -> dict:
+    """Drop vulnerability objects that share a vmp fingerprint.
+
+    DefectDojo does not deduplicate two rows inside one imported test, so the
+    duplicate Log4j object in the sample Trivy file would be stored twice.
+    """
+    seen: set[str] = set()
+    results = []
+    for result in data.get("Results") or []:
+        if not isinstance(result, dict):
+            results.append(result)
+            continue
+        vulns = result.get("Vulnerabilities")
+        if not isinstance(vulns, list):
+            results.append(result)
+            continue
+        kept = []
+        base = {key: value for key, value in result.items() if key != "Vulnerabilities"}
+        for vuln in vulns:
+            if not isinstance(vuln, dict):
+                kept.append(vuln)
+                continue
+            parsed = parse_trivy(
+                {
+                    "ArtifactName": data.get("ArtifactName"),
+                    "Results": [{**base, "Vulnerabilities": [vuln]}],
+                },
+                source="upload",
+            )
+            if _keep_first(parsed, seen):
+                kept.append(vuln)
+        results.append({**result, "Vulnerabilities": kept})
+    return {**data, "Results": results}
+
+
+def dedupe_zap_document(data: dict) -> dict:
+    """Drop ZAP instances that share a fingerprint before the XML conversion."""
+    seen: set[str] = set()
+    sites = data.get("site") or []
+    if isinstance(sites, dict):
+        sites = [sites]
+    new_sites = []
+    for site in sites:
+        if not isinstance(site, dict):
+            new_sites.append(site)
+            continue
+        alerts = []
+        for alert in site.get("alerts") or []:
+            if not isinstance(alert, dict):
+                alerts.append(alert)
+                continue
+            instances = alert.get("instances") or [None]
+            kept_instances = []
+            for instance in instances:
+                one_instance = [] if instance is None else [instance]
+                trial = {
+                    "site": [
+                        {
+                            **{key: value for key, value in site.items() if key != "alerts"},
+                            "alerts": [{**alert, "instances": one_instance}],
+                        }
+                    ]
+                }
+                if _keep_first(parse_zap(trial, source="upload"), seen):
+                    if instance is not None:
+                        kept_instances.append(instance)
+            if kept_instances or not alert.get("instances"):
+                alerts.append({**alert, "instances": kept_instances})
+        new_sites.append({**site, "alerts": alerts})
+    return {**data, "site": new_sites}
+
+
+def dedupe_nuclei_lines(lines: list[str]) -> list[str]:
+    seen: set[str] = set()
+    kept = []
+    for line in lines:
+        parsed, _warnings = parse_nuclei(line, source="upload")
+        if _keep_first(parsed, seen):
+            kept.append(line)
+    return kept
+
+
 def nuclei_for_defectdojo(content: bytes) -> bytes:
     """Drop comment lines. DefectDojo only treats the file as JSONL when it starts with ``{``."""
     text = content.decode("utf-8-sig")
@@ -117,12 +210,18 @@ def nuclei_for_defectdojo(content: bytes) -> bytes:
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
             lines.append(stripped)
+    lines = dedupe_nuclei_lines(lines)
     return ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
 
 
 def upload_bytes(path: Path, scan_type: str) -> tuple[str, bytes]:
     """Return the filename and body DefectDojo should receive."""
     content = path.read_bytes()
+    if scan_type == "Trivy Scan":
+        text = content.decode("utf-8-sig")
+        if text.lstrip().startswith("{"):
+            deduped = dedupe_trivy_document(json.loads(text))
+            return path.name, (json.dumps(deduped, indent=2) + "\n").encode("utf-8")
     if scan_type == "Nuclei Scan":
         return path.name, nuclei_for_defectdojo(content)
     if scan_type != "ZAP Scan" or path.name.lower().endswith(".xml"):
